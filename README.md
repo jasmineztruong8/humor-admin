@@ -3,6 +3,8 @@
 The admin area for [The Humor Project](https://github.com/jasmineztruong8/thehumorproject). It's a separate
 Next.js app on the **same Supabase database**, so everything here is live data from the main site.
 
+Live: https://humor-admin-eight.vercel.app (superadmins only)
+
 | Page | What you can do |
 |---|---|
 | **Stats** (`/`) | Totals, captions and votes per day, activity by hour, hall of fame, most divisive captions, funniest people, whether steering the AI helps, model breakdown |
