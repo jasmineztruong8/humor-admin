@@ -1,0 +1,35 @@
+"use client";
+
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+// First hop of the flow: admin -> Google (via Supabase Auth).
+export function GoogleSignInButton() {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function signIn() {
+    setPending(true);
+    setError(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      // Must exactly match an entry in Supabase's Redirect URLs list
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) {
+      console.error("Google sign-in failed", error);
+      setError("Couldn't start Google sign-in. Please try again.");
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button onClick={signIn} disabled={pending} className="btn btn-primary">
+        {pending ? "Redirecting…" : "Sign in with Google"}
+      </button>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
