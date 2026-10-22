@@ -33,7 +33,12 @@ export default async function VotesPage({ searchParams }: PageProps<"/votes">) {
 
   let query = supabase
     .from("caption_votes")
-    .select("user_id, value, created_at, profiles(first_name, last_name), captions(id, image_id, content, score, profiles(first_name, last_name))", { count: "exact" })
+    // Named FKs: caption_votes also links captions to profiles, so a bare
+    // "profiles" embed is ambiguous
+    .select(
+      "user_id, value, created_at, profiles!caption_votes_user_id_fkey(first_name, last_name), captions(id, image_id, content, score, profiles!captions_user_id_fkey(first_name, last_name))",
+      { count: "exact" },
+    )
     .order("created_at", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   if (filter) query = query.eq("value", filter === "up" ? 1 : -1);

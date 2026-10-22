@@ -41,7 +41,7 @@ export default async function ImagePage({ params }: PageProps<"/media/[id]">) {
   const { supabase } = await requireAdmin();
   const { id } = await params;
 
-  const [{ data: image }, { data: captions }] = await Promise.all([
+  const [{ data: image }, { data: captions, error: captionsError }] = await Promise.all([
     supabase
       .from("images")
       .select("id, title, image_url, source, attribution, description, description_model, is_animated, created_at, profiles!images_user_id_fkey(first_name, last_name)")
@@ -49,13 +49,15 @@ export default async function ImagePage({ params }: PageProps<"/media/[id]">) {
       .maybeSingle<ImageDetail>(),
     supabase
       .from("captions")
-      .select("id, content, user_prompt, model, score, created_at, profiles(first_name, last_name), caption_votes(value)")
+      // Named FK: caption_votes also links captions to profiles (the voters)
+      .select("id, content, user_prompt, model, score, created_at, profiles!captions_user_id_fkey(first_name, last_name), caption_votes(value)")
       .eq("image_id", id)
       .order("score", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<CaptionDetail[]>(),
   ]);
   if (!image) notFound();
+  if (captionsError) console.error("Loading captions failed", captionsError);
 
   return (
     <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
@@ -115,6 +117,7 @@ export default async function ImagePage({ params }: PageProps<"/media/[id]">) {
           <div>
             <h2 className="text-xl font-semibold">Captions</h2>
             <p className="text-sm text-dim">{captions?.length ?? 0} AI captions, best first.</p>
+            {captionsError && <p className="text-sm text-danger">The captions didn&apos;t load. Please refresh the page.</p>}
           </div>
         </div>
 
