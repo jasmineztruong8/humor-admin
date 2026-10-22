@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { resizeImage } from "@/lib/image";
@@ -16,6 +16,18 @@ export function NewImageForm({ userId }: { userId: string }) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  // Free the preview's object URL when it's replaced or the page closes
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setError(null);
+    setPreview(file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,8 +73,20 @@ export function NewImageForm({ userId }: { userId: string }) {
     <form onSubmit={handleSubmit} className="card p-5 flex flex-col gap-4">
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="font-medium">Photo</span>
-        <input name="photo" type="file" accept="image/*" required disabled={busy} className="text-sm" />
+        <input
+          name="photo"
+          type="file"
+          accept="image/*"
+          required
+          disabled={busy}
+          onChange={handlePick}
+          className="text-sm text-dim file:mr-3 file:px-3.5 file:py-2 file:rounded-lg file:border file:border-solid file:border-axis file:bg-well file:text-ink file:font-medium file:cursor-pointer hover:file:bg-line"
+        />
       </label>
+      {preview && (
+        // eslint-disable-next-line @next/next/no-img-element -- local blob preview, not a remote image
+        <img src={preview} alt="Selected photo" className="max-h-64 w-fit rounded-lg bg-well object-contain" />
+      )}
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="font-medium">Title <span className="text-muted font-normal">(optional)</span></span>
         <input name="title" maxLength={120} disabled={busy} className="field" />
