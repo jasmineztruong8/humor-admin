@@ -128,3 +128,36 @@ export function engagement(profiles: ProfileRow[], images: ImageRow[], captions:
     lurkers: profiles.filter((p) => !uploaded.has(p.id) && !captioned.has(p.id) && !voted.has(p.id)).length,
   };
 }
+
+// The value below which p (0-1) of the values fall, e.g. 0.5 for the median.
+export function percentile(values: number[], p: number) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] ?? sorted[0];
+}
+
+export type ResponseRow = { model: string; status: string; latency_ms: number };
+
+// Per model: how often it answered, and how fast, busiest first.
+export function modelHealth(responses: ResponseRow[]) {
+  const groups = new Map<string, ResponseRow[]>();
+  for (const r of responses) groups.set(r.model, [...(groups.get(r.model) ?? []), r]);
+  return [...groups.entries()]
+    .map(([model, rows]) => {
+      const ok = rows.filter((r) => r.status === "ok");
+      return {
+        model,
+        attempts: rows.length,
+        ok: ok.length,
+        quota: rows.filter((r) => r.status === "quota").length,
+        busy: rows.filter((r) => r.status === "busy" || r.status === "timeout").length,
+        medianMs: percentile(ok.map((r) => r.latency_ms), 0.5),
+      };
+    })
+    .sort((a, b) => b.attempts - a.attempts || a.model.localeCompare(b.model));
+}
+
+// ISO timestamp for `days` days ago, for "last N days" queries.
+export function daysAgo(days: number, now = new Date()) {
+  return new Date(now.getTime() - days * 86_400_000).toISOString();
+}

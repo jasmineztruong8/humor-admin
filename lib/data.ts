@@ -56,6 +56,23 @@ export async function fetchAll<T>(supabase: SupabaseClient, table: string, colum
   }
 }
 
+// Every row created since a date, a page at a time (for charts over a window).
+export async function fetchSince<T>(supabase: SupabaseClient, table: string, columns: string, since: string): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .gte("created_at", since)
+      .order("created_at", { ascending: true })
+      .range(from, from + PAGE - 1)
+      .returns<T[]>();
+    if (error) throw new Error(`Loading ${table} failed: ${error.message}`);
+    rows.push(...data);
+    if (data.length < PAGE) return rows;
+  }
+}
+
 export function loadEverything(supabase: SupabaseClient) {
   return Promise.all([
     fetchAll<ProfileRow>(supabase, "profiles", "id, first_name, last_name, is_superadmin, created_at"),

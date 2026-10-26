@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
-import { AiUnavailableError, describeImage, writeCaption } from "@/lib/gemini";
-import { MAX_CAPTION_LENGTH, cleanSteer } from "@/lib/prompts";
+import { AiUnavailableError, describeImage, writeCaption, type Attempt } from "@/lib/gemini";
+import { DESCRIBE_PROMPT, MAX_CAPTION_LENGTH, buildCaptionRequest, cleanSteer } from "@/lib/prompts";
+import { contextFor, loadAiConfig, pickChain } from "@/lib/ai-config";
+import { writeGenerationLog, type GenerationLog } from "@/lib/ai-log";
 
 export type FormState = { error?: string; message?: string } | undefined;
 
@@ -27,6 +31,16 @@ function aiErrorMessage(e: unknown) {
   return "Something went wrong with the AI. Please try again.";
 }
 
+// Logs the admin's own AI requests next to the site's, once the response has
+// been sent. RLS lets a superadmin write log rows only as themselves.
+function logAiRequest(supabase: SupabaseClient, log: Omit<GenerationLog, "app">) {
+  after(() => writeGenerationLog(supabase, { ...log, app: "admin" }));
+}
+
+function errorText(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
 // CREATE. The photo is already in Storage (uploaded from the browser to
 // images/<admin id>/<random id>.jpg). The AI describes it and writes a first
 // caption, then both are saved as the admin's own upload.
@@ -44,11 +58,47 @@ export async function createImage(storagePath: string, title: string, steer: str
   const { data: file, error: downloadError } = await supabase.storage.from("images").download(storagePath);
   if (downloadError || !file) return fail("Couldn't find the upload. Please try again.");
 
-  let described, caption;
+  const config = await loadAiConfig(supabase);
+  const chain = pickChain(config.chains);
+  const describeLog = {
+    userId: user.id,
+    kind: "describe" as const,
+    chainId: null,
+    steer: null,
+    prompt: DESCRIBE_PROMPT,
+    attempts: [] as Attempt[],
+    startedAt: Date.now(),
+    modelIds: config.modelIds,
+  };
+  let described;
   try {
-    described = await describeImage({ data: Buffer.from(await file.arrayBuffer()), mimeType: "image/jpeg" });
-    caption = await writeCaption(described.description, cleanSteer(steer));
+    described = await describeImage(
+      { data: Buffer.from(await file.arrayBuffer()), mimeType: "image/jpeg" },
+      { models: config.models, attempts: describeLog.attempts },
+    );
   } catch (e) {
+    logAiRequest(supabase, { ...describeLog, imageId: null, error: errorText(e) });
+    return fail(aiErrorMessage(e));
+  }
+  const captionLog = {
+    ...describeLog,
+    kind: "caption" as const,
+    chainId: chain.id,
+    steer: cleanSteer(steer),
+    prompt: buildCaptionRequest(described.description, cleanSteer(steer), contextFor(chain, config)).fullPrompt,
+    attempts: [] as Attempt[],
+    startedAt: Date.now(),
+  };
+  let caption;
+  try {
+    caption = await writeCaption(described.description, cleanSteer(steer), {
+      models: config.models,
+      attempts: captionLog.attempts,
+      context: contextFor(chain, config),
+    });
+  } catch (e) {
+    logAiRequest(supabase, { ...describeLog, imageId: null });
+    logAiRequest(supabase, { ...captionLog, imageId: null, error: errorText(e) });
     return fail(aiErrorMessage(e));
   }
 
@@ -67,7 +117,13 @@ export async function createImage(storagePath: string, title: string, steer: str
     })
     .select("id")
     .single();
-  if (error || !image) return fail("Couldn't save the image. Please try again.");
+  if (error || !image) {
+    logAiRequest(supabase, { ...describeLog, imageId: null });
+    logAiRequest(supabase, { ...captionLog, imageId: null });
+    return fail("Couldn't save the image. Please try again.");
+  }
+  logAiRequest(supabase, { ...describeLog, imageId: image.id, prompt: described.prompt });
+  logAiRequest(supabase, { ...captionLog, imageId: image.id });
 
   const { error: captionError } = await supabase.from("captions").insert({
     image_id: image.id,
@@ -99,12 +155,28 @@ export async function generateCaption(imageId: string, _prev: FormState, formDat
   if (!image) return { error: "That image doesn't exist anymore." };
 
   const steer = cleanSteer(formData.get("steer"));
+  const config = await loadAiConfig(supabase);
+  const chain = pickChain(config.chains);
+  const context = contextFor(chain, config);
+  const log = {
+    userId: user.id,
+    kind: "caption" as const,
+    chainId: chain.id,
+    imageId,
+    steer,
+    prompt: buildCaptionRequest(image.description, steer, context).fullPrompt,
+    attempts: [] as Attempt[],
+    startedAt: Date.now(),
+    modelIds: config.modelIds,
+  };
   let caption;
   try {
-    caption = await writeCaption(image.description, steer);
+    caption = await writeCaption(image.description, steer, { models: config.models, attempts: log.attempts, context });
   } catch (e) {
+    logAiRequest(supabase, { ...log, error: errorText(e) });
     return { error: aiErrorMessage(e) };
   }
+  logAiRequest(supabase, log);
 
   const { error } = await supabase.from("captions").insert({
     image_id: imageId,

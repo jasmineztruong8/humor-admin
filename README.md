@@ -11,6 +11,19 @@ Live: https://humor-admin-eight.vercel.app (superadmins only)
 | **Users** (`/users`) | READ every profile with images, captions, caption score and voting habits. Search and sort |
 | **Media** (`/media`) | CREATE an image (Gemini describes it and writes a caption), READ all images and captions, UPDATE titles, descriptions and caption text, DELETE images and captions, and generate more AI captions |
 | **Votes** (`/votes`) | READ every upvote and downvote, filterable |
+| **Requests** (`/requests`) | READ every AI request from both apps (describe a photo, suggest a caption), with success rate, timing and a daily chart. Open one to see the prompt and every model it tried |
+| **Responses** (`/responses`) | READ every LLM call, filterable by model and result, plus per-model health (answer rate, quota errors, median time) |
+| **Chains** (`/chains`) | READ the prompt chains and their steps; READ/UPDATE the mix (what share of captions each chain writes) |
+| **Models** (`/models`) | CREATE/READ/UPDATE/DELETE LLM models. Active Google models are what the caption AI tries, lowest priority first |
+| **Providers** (`/providers`) | CREATE/READ/UPDATE/DELETE LLM providers |
+| **Examples** (`/examples`) | CREATE/READ/UPDATE/DELETE few-shot caption examples used by the "with examples" chain |
+| **Terms** (`/terms`) | CREATE/READ/UPDATE/DELETE campus terms used by the "with examples" chain |
+| **Sign-up access** (`/access`) | CREATE/READ/UPDATE/DELETE allowed sign-up domains and whitelisted emails. Empty lists mean anyone can sign up; existing accounts are never locked out |
+
+The AI settings and the request log live in the main repo's
+`supabase/migrations/20261025000000_ai_observability.sql`. The caption site reads the settings (cached for a
+minute, falling back to built-in defaults if anything goes wrong) and logs each request after its response is
+sent, so neither can slow down or break captioning.
 
 ## Who can get in
 

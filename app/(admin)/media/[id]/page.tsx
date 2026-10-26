@@ -116,7 +116,10 @@ export default async function ImagePage({ params }: PageProps<"/media/[id]">) {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold">Captions</h2>
-            <p className="text-sm text-dim">{captions?.length ?? 0} AI captions, best first.</p>
+            <p className="text-sm text-dim">
+              {captions?.length ?? 0} AI captions, best first.{" "}
+              <Link href={`/requests?image=${image.id}`} className="hover:underline">See the AI requests for this image</Link>
+            </p>
             {captionsError && <p className="text-sm text-danger">The captions didn&apos;t load. Please refresh the page.</p>}
           </div>
         </div>
